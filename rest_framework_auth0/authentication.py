@@ -12,6 +12,7 @@ from rest_framework_auth0.utils import get_groups_from_payload
 jwt_decode_handler = jwt_api_settings.JWT_DECODE_HANDLER
 jwt_get_username_from_payload = jwt_api_settings.JWT_PAYLOAD_GET_USERNAME_HANDLER
 
+
 class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBackend):
     """
     Clients should authenticate by passing the token key in the "Authorization"
@@ -48,7 +49,7 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
         jwt_api_settings.JWT_AUTH_HEADER_PREFIX = auth0_api_settings.JWT_AUTH_HEADER_PREFIX
 
         # RS256 Related configurations
-        if(client['AUTH0_ALGORITHM'].upper() == "HS256"):
+        if (client['AUTH0_ALGORITHM'].upper() == "HS256"):
             if client['CLIENT_SECRET_BASE64_ENCODED']:
                 jwt_api_settings.JWT_SECRET_KEY = base64.b64decode(
                     client['AUTH0_CLIENT_SECRET'].replace("_", "/").replace("-", "+")
@@ -56,7 +57,7 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
             else:
                 jwt_api_settings.JWT_SECRET_KEY = client['AUTH0_CLIENT_SECRET']
 
-        if(client['AUTH0_ALGORITHM'].upper() == "RS256"):
+        if (client['AUTH0_ALGORITHM'].upper() == "RS256"):
             jwt_api_settings.JWT_PUBLIC_KEY = client['PUBLIC_KEY']
 
         return super(Auth0JSONWebTokenAuthentication, self).authenticate(request)
@@ -91,7 +92,29 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
                 # RemoteUserBackend behavior:
                 # pass
         user = self.configure_user_permissions(user, payload)
+        if auth0_api_settings.user_settings.get('UPDATE_USER', False):
+            user = self.update_user(user, payload)
         return user if self.user_can_authenticate(user) else None
+
+    def update_user(self, user, payload):
+        error_base_string = 'When UPDATE_USER is enabled, settings must include: '
+
+        mapping_key = 'ADDITIONAL_USER_INFO_MAPPING'
+        extra_info = auth0_api_settings.user_settings.get(mapping_key)
+        assert extra_info, error_base_string + mapping_key
+
+        namespace_key = 'NAMESPACE'
+        namespace = auth0_api_settings.user_settings.get(namespace_key)
+        assert namespace, error_base_string + namespace_key
+
+        if extra_info:
+            for info in extra_info:
+                full_payload_key = namespace + info['payload_key']
+                value = payload.get(full_payload_key)
+                assert value, 'JWT payload must include: ' + full_payload_key
+                setattr(user, info['field'], value)
+            user.save()
+        return user
 
     def configure_user_permissions(self, user, payload):
         """
