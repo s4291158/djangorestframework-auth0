@@ -83,6 +83,8 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
             })
             if created:
                 user = self.configure_user(user)
+                if auth0_api_settings.user_settings.get('UPDATE_USER', False):
+                    user = self.update_user(user, payload)
         else:
             try:
                 user = UserModel._default_manager.get_by_natural_key(username)
@@ -92,8 +94,6 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
                 # RemoteUserBackend behavior:
                 # pass
         user = self.configure_user_permissions(user, payload)
-        if auth0_api_settings.user_settings.get('UPDATE_USER', False):
-            user = self.update_user(user, payload)
         return user if self.user_can_authenticate(user) else None
 
     def update_user(self, user, payload):
@@ -107,13 +107,17 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
         namespace = auth0_api_settings.user_settings.get(namespace_key)
         assert namespace, error_base_string + namespace_key
 
+        save_flag = False
         if extra_info:
             for info in extra_info:
                 full_payload_key = namespace + info['payload_key']
                 value = payload.get(full_payload_key)
                 assert value, 'JWT payload must include: ' + full_payload_key
-                setattr(user, info['field'], value)
-            user.save()
+                if user[info['field']] != value:
+                    save_flag = True
+                    setattr(user, info['field'], value)
+            if save_flag:
+                user.save()
         return user
 
     def configure_user_permissions(self, user, payload):
