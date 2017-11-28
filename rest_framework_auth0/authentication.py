@@ -113,7 +113,7 @@ class Auth0JSONWebTokenAuthentication(JSONWebTokenAuthentication, RemoteUserBack
                 full_payload_key = namespace + info['payload_key']
                 value = payload.get(full_payload_key)
                 assert value, 'JWT payload must include: ' + full_payload_key
-                if user[info['field']] != value:
+                if getattr(user, info['field']) != value:
                     save_flag = True
                     setattr(user, info['field'], value)
             if save_flag:
